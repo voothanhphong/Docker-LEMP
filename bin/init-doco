@@ -1,17 +1,31 @@
-version: '3.5'
+#!/bin/bash
+PATH=$(pwd)
+if [ -n "$1" ]; then
+    if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+        printf "Usage:
+    init-doco [<path>]
+Options:
+    <path>: Optional (Default current folder) -- path of docker-compose file [path]/docker-compose.yml
+        " && exit
+    fi
+
+    PATH="$1"
+fi
+
+printf "version: '3.5'
 services:
     varnish:
         image: vothanhphong/varnish
 #        volumes:
 #             - ./docker/varnish.vcl:/etc/varnish/default.vcl
         ports:
-            - "80:6081"
+            - \"80:6081\"
         depends_on:
             - nginx
     nginx:
         image: vothanhphong/nginx
         ports:
-            - "443:443"
+            - \"443:443\"
         environment:
             - IS_MAGENTO=true
             - VARNISH=varnish
@@ -25,7 +39,7 @@ services:
     php:
         image: vothanhphong/fpm:7.3
         ports:
-            - "9000"
+            - \"9000\"
         volumes: *app_volume
         environment:
             - MODULE_ENABLE=
@@ -39,11 +53,11 @@ services:
     redis:
         image: redis
         ports:
-            - "6379"
+            - \"6379\"
     elasticsearch:
         image: elasticsearch:6.8.18
         ports:
-            - "9200:9200"
+            - \"9200:9200\"
         environment:
             - discovery.type=single-node
         volumes:
@@ -51,17 +65,17 @@ services:
     mailhog:
         image: mailhog/mailhog
         ports:
-            - "8025:8025"
+            - \"8025:8025\"
     rabbit:
         image: rabbitmq:3.8.4-management-alpine
         ports:
-            - "15672:15672"
+            - \"15672:15672\"
         volumes:
             - rabbitmqdata:/var/lib/rabbitmq
     db:
         image: mysql:5.7
         ports:
-            - "3306:3306"
+            - \"3306:3306\"
         environment:
             - MYSQL_DATABASE=local
             - MYSQL_USER=local
@@ -80,3 +94,4 @@ volumes:
             type: 'none'
             o: 'bind'
             device: '~/composer'
+" > "${PATH}/docker-compose.yml"

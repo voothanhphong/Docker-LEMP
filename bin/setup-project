@@ -1,0 +1,139 @@
+#!/bin/bash
+spin() {
+    i=1
+    while true; do
+        sleep 1
+        printf "\r$1: %d" ${i}
+        i=$((i + 1))
+        wait
+    done
+}
+
+FOLDER=""
+GIT=""
+BRANCH=""
+DATABASE=""
+AUTH_FILE=""
+BASE_URL=""
+PHP_VERSION=""
+DB_IMAGE=""
+IS_HTTPS=""
+IS_MAGENTO=""
+OWN_GROUP=""
+
+until sudo -lS &>/dev/null <<EOF; do
+$password
+EOF
+    printf "Enter password for %s: " "${USER}"
+    IFS= read -rs password
+done
+
+echo
+read -p "Enter project path root: " -e -r FOLDER
+if [ -z "${FOLDER}" ]; then
+    FOLDER=$(pwd)
+fi
+read -p "Own Group: " -e -i "www-data" -r OWN_GROUP
+if [ -z "${OWN_GROUP}" ]; then
+    OWN_GROUP=www-data
+fi
+
+if [ ! -e "${FOLDER}/src/.git" ]; then
+    read -p "GIT URL (Empty is not clone): " -e -r GIT
+    read -p "GIT Branch: " -e -i "master" -r BRANCH
+fi
+
+read -p "Custom auth.json File (Empty is default on git): " -e -r AUTH_FILE
+
+read -p "DATABASE (Empty is skip import database): " -e -r DATABASE
+
+read -p "BASE URL (Empty is localhost): " -e -r BASE_URL
+if [ -z "${BASE_URL}" ]; then
+    BASE_URL=localhost
+fi
+
+read -p "Use HTTPS: " -e -i "true" -r IS_HTTPS
+if [ -z "${IS_HTTPS}" ]; then
+    IS_HTTPS=true
+fi
+
+read -p "Is Magento Project: " -e -i "true" -r IS_MAGENTO
+if [ -z "${IS_MAGENTO}" ]; then
+    IS_MAGENTO=true
+fi
+
+read -p "PHP Version(Empty is latest image support version: 7.0 - 8.0): " -e -i "7.3" -r PHP_VERSION
+if [ -z "${PHP_VERSION}" ]; then
+    PHP_VERSION=latest
+fi
+if [ "${PHP_VERSION}" != "latest" ]; then
+    phpnumber="${PHP_VERSION/./""}"
+    if [ $phpnumber -lt 70 ] || [ $phpnumber -gt 74 ]; then
+        PHP_VERSION="latest"
+    fi
+fi
+
+read -p "Mysql Image: " -e -i "mysql:5.7" -r DB_IMAGE
+if [ -z "${DB_IMAGE}" ]; then
+    DB_IMAGE=mysql:5.7
+fi
+
+mkdir -p "$FOLDER"
+cd "$FOLDER" && echo
+
+init-doco "${FOLDER}"
+
+sed -i "s/!SERVER_NAME!/${BASE_URL}/g" "${FOLDER}/docker-compose.yml"
+sed -i "s/!PHP_VERSION!/${PHP_VERSION}/g" "${FOLDER}/docker-compose.yml"
+sed -i "s/!DB_IMAGE!/${DB_IMAGE}/g" "${FOLDER}/docker-compose.yml"
+sed -i "s/!IS_HTTPS!/${IS_HTTPS}/g" "${FOLDER}/docker-compose.yml"
+sed -i "s/!IS_MAGENTO!/${IS_MAGENTO}/g" "${FOLDER}/docker-compose.yml"
+printf "\n127.0.0.1\t%s" "${BASE_URL}" | sudo tee -a /etc/hosts > /dev/null
+
+echo ""
+if [ -n "$GIT" ]; then
+    spin 'Clone code' &
+    pid=$!
+    git clone -b "$BRANCH" "$GIT" "${FOLDER}/src" > /dev/null
+    kill ${pid}
+fi
+
+if [ -n "${AUTH_FILE}" ]; then
+    cp "${AUTH_FILE}" "${FOLDER}/src/"
+fi
+
+echo
+spin 'Docker Compose Starting' & pid=$!
+doco up -d --remove-orphans > /dev/null
+kill ${pid}
+
+echo
+spin 'Composer Install Module' & pid=$!
+composer install > /dev/null
+kill ${pid}
+
+permission "$FOLDER" "$OWN_GROUP"
+
+if [ -n "$DATABASE" ]; then
+    spin 'Database Importing' &
+    pid=$!
+    mysql-import DATABASE root local local > /dev/null
+    kill ${pid}
+fi
+
+if [ "$IS_MAGENTO" == "true" ]; then
+    if [ ! -e "${FOLDER}/src/app/etc/env.php" ]; then
+        init-magento-env "${FOLDER}"
+    fi
+
+    spin 'Magento setup' & pid=$!
+    mgt ca:f
+    mgt deploy:mode:set developer
+    mgt s:up
+    kill ${pid}
+    spin 'Magento indexing' & pid=$!
+    mgt in:rei
+    kill ${pid}
+fi
+
+echo "Done"

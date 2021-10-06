@@ -1,0 +1,25 @@
+#!/bin/bash
+VARNISH=""
+FILE="/etc/nginx/conf.d/site-enabled.conf"
+VHOST_FOLDER="/etc/nginx/vhost/"
+VHOST_FILENAME="mysite.conf"
+
+for item in "$@"
+do
+    item=$(echo "${item}" | tr '[:upper:]' '[:lower:]')
+    if [[ "$item" == --varnish=* ]]; then
+        VARNISH="${item/--varnish=/}"
+    elif [ "$item" == "--is-magento" ] || [ "$item" == "--is-magento=true" ]; then
+        VHOST_FILENAME="magento.conf"
+    elif [ "$item" == "--help" ] || [ "$item" == "-h" ]; then
+        printf "Usage:\n\t vhost [--varnish=<varnish host>] [--is-magento]\n\n\tOption:\n\t\t--varnish\tVarnish host (Optional)\n\t\t--is-magento\tIs Magento app (Optional)" && exit
+    fi
+done
+
+if [ -n "$VARNISH" ]; then
+    VHOST_FOLDER="${VHOST_FOLDER}varnish/"
+fi
+
+cp -f "${VHOST_FOLDER}${VHOST_FILENAME}" "${FILE}"
+sed -i "s/!VARNISH!/${VARNISH}/g" "${FILE}"
+create-ssl-key

@@ -1,0 +1,33 @@
+#!/bin/bash
+if [ -z "$1" ]; then
+    YES=n
+
+    read -p "Are you delete all container? (Y/n): " -e -r YES
+
+    [ "${YES}" != "y" ] && exit
+
+    printf "Container removed:\n"
+    docker rm -f "$(docker ps -aq)"
+else
+    if [ "$1" == "--help" ] || [ "$1" == "-h" ];then
+        printf "Usage:\n\tremove-trash-container [Exclude_Prefix_1 Exclude_Prefix_2 ...]" && exit
+    fi
+    EXCLUDE=''
+    for item in "$@"
+    do
+        SUB_EXCLUDE=$(docker ps -aq -f "name=${item}" | paste -sd "|" -)
+
+        if [ -n "${SUB_EXCLUDE}" ]; then
+            if [ -n "${EXCLUDE}" ]; then
+                EXCLUDE="${EXCLUDE}|"
+            fi
+            EXCLUDE="${EXCLUDE}${SUB_EXCLUDE}"
+        fi
+    done
+
+    printf "Container removed:\n"
+    containers=$(docker ps -aq | grep -v -E "${EXCLUDE}")
+    containers=($(echo "${containers}"))
+    docker rm -f "${containers[@]}"
+fi
+

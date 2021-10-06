@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+vhost "--varnish=${VARNISH}" "--is-magento=${IS_MAGENTO}"
+
+# Update nginx config
+if [[ "${NGINX_CONFIG}" != '' ]]; then
+    mapfile -t NGINX_CONFIG < <(echo "${NGINX_CONFIG}" | tr ',' "\n")
+    nginx-config "${NGINX_CONFIG[@]}"
+fi
+
+nginx -t
+
+exec "$@"

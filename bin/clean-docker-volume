@@ -1,0 +1,30 @@
+#!/bin/bash
+if [ -z "$1" ]; then
+    docker volume prune
+else
+    if [ "$1" == "--help" ] || [ "$1" == "-h" ];then
+        printf "Usage:\n\tclean-docker-volume [Exclude_Prefix_1 Exclude_Prefix_2 ...]" && exit
+    fi
+
+    EXCLUDE=''
+    for item in "$@"
+    do
+        SUB_EXCLUDE=$(docker volume ls | grep "${item}" | awk '{print $2}' | paste -sd "|" -)
+
+        if [ -n "${SUB_EXCLUDE}" ]; then
+            if [ -n "${EXCLUDE}" ]; then
+                EXCLUDE="${EXCLUDE}|"
+            fi
+            EXCLUDE="${EXCLUDE}${SUB_EXCLUDE}"
+        fi
+    done
+
+    VOLUMES=$(docker volume ls | awk 'NR > 1 {print $2}' | grep -v -E "${EXCLUDE}")
+    VOLUMES=($(echo "${VOLUMES}"))
+
+    for volume in "${VOLUMES[@]}"
+    do
+        docker volume rm "${volume}"
+    done
+fi
+

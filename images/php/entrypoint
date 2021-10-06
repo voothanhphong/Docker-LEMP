@@ -1,0 +1,51 @@
+#!/bin/bash
+set -e
+configs=$(echo "${PHP_CONFIG}" | tr '[:upper:]' '[:lower:]')
+pools=$(echo "${FPM_POOL}" | tr '[:upper:]' '[:lower:]')
+MODULE_ENABLE=$(echo "${MODULE_ENABLE}" | tr '[:upper:]' '[:lower:]')
+ENABLE_CRON=$(echo "${ENABLE_CRON}" | tr '[:upper:]' '[:lower:]')
+
+# Enable custom module
+if [ -n "${MODULE_ENABLE}" ]; then
+    php-enable "${MODULE_ENABLE}"
+fi
+
+
+# Update php config
+if [ -n "${configs}" ]; then
+	configs=( "${configs}" )
+	for item in "${configs[@]}"
+	do
+		mapfile -t item < <(echo "${item}" | tr '=' "\n")
+
+	    configName=${item[0]}
+	    configValue=${item[1]}
+
+	    sed -i "/${configName}/d" /usr/local/etc/php/conf.d/zz-docker.ini
+		printf "\n%s = %s" "${configName}" "${configValue}" >> /usr/local/etc/php/conf.d/zz-docker.ini
+	    sed -i '/^$/d' /usr/local/etc/php/conf.d/zz-docker.ini
+	done
+fi
+
+# Update php-fpm pool
+if [ -n "${pools}" ]; then
+	pools=( "${pools}" )
+	for item in "${pools[@]}"
+	do
+		mapfile -t item < <(echo "${item}" | tr '=' "\n")
+
+	    configName=$(echo "${item[0]}" | tr '[:upper:]' '[:lower:]')
+	    configValue=${item[1]}
+
+	    sed -i "/${configName}/d" /usr/local/etc/php-fpm.d/zz-docker.conf
+        printf "\n%s = %s" "${configName}" "${configValue}" >> /usr/local/etc/php-fpm.d/zz-docker.conf
+        sed -i '/^$/d' /usr/local/etc/php-fpm.d/zz-docker.conf
+	done
+fi
+
+# Config cron
+if [ "${ENABLE_CRON}" == "true" ]; then
+    cron-start
+fi
+
+exec "$@"
