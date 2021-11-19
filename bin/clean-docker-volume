@@ -19,12 +19,6 @@ else
         fi
     done
 
-    VOLUMES=$(docker volume ls | awk 'NR > 1 {print $2}' | grep -v -E "${EXCLUDE}")
-    VOLUMES=($(echo "${VOLUMES}"))
-
-    for volume in "${VOLUMES[@]}"
-    do
-        docker volume rm "${volume}"
-    done
+    docker volume rm -f $(docker volume ls | awk 'NR > 1 {print $2}' | grep -v -E "${EXCLUDE}")
 fi
 

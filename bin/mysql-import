@@ -10,7 +10,7 @@ if [ -z "$1" ]; then
     read -p "Password: " -e -r PASS
     read -p "Database name: " -e -r DB
 else
-    if [ "$1" == "--help" ] || [ -n "$4" ]; then
+    if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
         echo "Description: Import mysql database with docker-compose."
         echo "Usage:"
         printf "\tmysql-import <sql path> <user> <pass> <database>"
@@ -22,4 +22,4 @@ else
     fi
 fi
 
-doco "exec -T db mysql -u${USER} -p{$PASS} ${DB}" < "$SQL_PATH"
+doco exec -T db mysql -u"${USER}" -p"${PASS}" "${DB}" < "$SQL_PATH"

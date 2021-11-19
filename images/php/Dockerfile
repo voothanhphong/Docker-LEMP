@@ -27,8 +27,6 @@ RUN apt-get update && \
         libxslt1-dev \
         libyaml-dev \
         libzip-dev \
-        librecode0 \
-        librecode-dev \
         zip \
         curl \
         cron \
@@ -85,7 +83,6 @@ RUN PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;"); \
                             sysvsem \
                             sysvshm \
                             tidy \
-                            xmlrpc \
                             xsl \
                             pcntl \
                             zip; \
@@ -95,6 +92,12 @@ RUN PHP_VERSION=$(php -r "echo PHP_MAJOR_VERSION.PHP_MINOR_VERSION;"); \
         curl -o m2 https://files.magerun.net/n98-magerun2-3.2.0.phar; \
     else \
         curl -o m2 https://files.magerun.net/n98-magerun2.phar; \
+    fi; \
+    if [ $PHP_VERSION -gt 74 ]; then \
+        pecl install -o -f xmlrpc; \
+        docker-php-ext-enable xmlrpc; \
+    else \
+        docker-php-ext-install xmlrpc; \
     fi; \
     chmod +x m2 && mv m2 /usr/bin/m2; \
     # Install recode

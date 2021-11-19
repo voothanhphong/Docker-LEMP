@@ -25,7 +25,8 @@ RUN addgroup -g 1000 www \
     && chown -R www:www "${ROOT_FOLDER}" /sock /entrypoint \
     && chmod +x /entrypoint \
     && chmod +x /usr/local/bin/*
-RUN rm -rf /var/cache/apk/*
+RUN rm -f /etc/nginx/conf.d/default.conf \
+    rm -rf /var/cache/apk/*
 
 WORKDIR ${ROOT_FOLDER}
 
