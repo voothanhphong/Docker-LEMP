@@ -37,6 +37,7 @@ Then the command will prompt you to input some information as below:
 - `bin/permission`: Fix permission.
 - `bin/remove-trash-container`: Remove docker container (remove-trash-container [<exclue name prefix>])
 - `bin/clean-docker-volume`: Remove docker volume (clean-docker-volume [<exclue name prefix>])
+- `bin/clean-docker-image`: Remove  docker image with empty name
 
 ## Email / Mailhog
 View emails sent locally through Mailhog by visiting http://localhost:8025
