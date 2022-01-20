@@ -1,0 +1,3 @@
+#!/bin/bash
+[ ! -f "./vendor/bin/magento-patches" ] && printf "vendor/bin/magento-patches is not file." && exit
+php-service "./vendor/bin/magento-patches" "$@"

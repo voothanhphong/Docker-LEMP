@@ -16,18 +16,15 @@ printf "version: '3.5'
 services:
     varnish:
         image: vothanhphong/varnish
-#        volumes:
-#             - ./docker/varnish.vcl:/etc/varnish/default.vcl
-        ports:
-            - \"80:6081\"
         depends_on:
             - nginx
     nginx:
         image: vothanhphong/nginx
         ports:
             - \"443:443\"
+            - \"80:80\"
         environment:
-            - IS_MAGENTO=true
+            - IS_MAGENTO=!IS_MAGENTO!
             - VARNISH=varnish
             - NGINX_CONFIG=
         volumes: &app_volume
@@ -37,14 +34,13 @@ services:
         depends_on:
             - php
     php:
-        image: vothanhphong/fpm:7.3
+        image: vothanhphong/fpm:!PHP_VERSION!
         ports:
             - \"9000\"
         volumes: *app_volume
         environment:
-            - MODULE_ENABLE=
             - ENABLE_CRON=false
-            - PHP_CONFIG=
+            - PHP_CONFIG=!XDEBUG!
             - FPM_POOL=
         depends_on:
             - db
@@ -73,7 +69,7 @@ services:
         volumes:
             - rabbitmqdata:/var/lib/rabbitmq
     db:
-        image: mysql:5.7
+        image: !DB_IMAGE!
         ports:
             - \"3306:3306\"
         environment:
@@ -93,5 +89,5 @@ volumes:
         driver_opts:
             type: 'none'
             o: 'bind'
-            device: '~/composer'
-" > "${PATH}/docker-compose.yml"
+            device: '/home/%s/composer'
+" "${USER}" > "${PATH}/docker-compose.yml"

@@ -9,17 +9,19 @@ spin() {
     done
 }
 
+RED='\033[0;31m'
+NC='\033[0m'
 FOLDER=""
 GIT=""
-BRANCH=""
+GIT_USER=""
+GIT_PASS=""
 DATABASE=""
 AUTH_FILE=""
-BASE_URL=""
 PHP_VERSION=""
 DB_IMAGE=""
-IS_HTTPS=""
 IS_MAGENTO=""
 OWN_GROUP=""
+XDEBUG=""
 
 until sudo -lS &>/dev/null <<EOF; do
 $password
@@ -33,6 +35,7 @@ read -p "Enter project path root: " -e -r FOLDER
 if [ -z "${FOLDER}" ]; then
     FOLDER=$(pwd)
 fi
+
 read -p "Own Group: " -e -i "www-data" -r OWN_GROUP
 if [ -z "${OWN_GROUP}" ]; then
     OWN_GROUP=www-data
@@ -40,24 +43,38 @@ fi
 
 if [ ! -e "${FOLDER}/src/.git" ]; then
     read -p "GIT URL (Empty is not clone): " -e -r GIT
-    read -p "GIT Branch: " -e -i "master" -r BRANCH
+fi
+
+if [ -n "${GIT}" ] && [[ "${GIT} == *"http"" ]];then
+    read -p "GIT Username: " -e -r GIT_USER
+    while [ -z "${GIT_USER}" ]; do
+        printf "%sUsername is required!%s" "${RED}" "${NC}"
+        read -p "GIT Username: " -e -r GIT_USER
+    done
+
+    read -p "GIT Password: " -e -r GIT_PASS
+    while [ -z "${GIT_PASS}" ]; do
+        printf "%sPassword is required!%s" "${RED}" "${NC}"
+        read -ps "GIT Password: " -e -r GIT_PASS
+    done
+
+    GIT="${GIT:0:8}${GIT_USER}:${GIT_PASS}@${GIT:8}"
 fi
 
 read -p "Custom auth.json File (Empty is default on git): " -e -r AUTH_FILE
+while [ -n "${AUTH_FILE}" ] && [ ! -e "${AUTH_FILE}" ]; do
+    printf "%s${AUTH_FILE} is not file!%s" "${RED}" "${NC}"
+    read -p "Custom auth.json File (Empty is default on git): " -e -r AUTH_FILE
+done
 
 read -p "DATABASE (Empty is skip import database): " -e -r DATABASE
-
-read -p "BASE URL (Empty is localhost): " -e -r BASE_URL
-if [ -z "${BASE_URL}" ]; then
-    BASE_URL=localhost
-fi
-
-read -p "Use HTTPS: " -e -i "true" -r IS_HTTPS
-if [ -z "${IS_HTTPS}" ]; then
-    IS_HTTPS=true
-fi
+while [ -n "${DATABASE}" ] && [ ! -e "${DATABASE}" ]; do
+    printf "%s${DATABASE} is not file!%s" "${RED}" "${NC}"
+    read -p "DATABASE (Empty is skip import database): " -e -r DATABASE
+done
 
 read -p "Is Magento Project: " -e -i "true" -r IS_MAGENTO
+
 if [ -z "${IS_MAGENTO}" ]; then
     IS_MAGENTO=true
 fi
@@ -78,23 +95,27 @@ if [ -z "${DB_IMAGE}" ]; then
     DB_IMAGE=mysql:5.7
 fi
 
-mkdir -p "$FOLDER"
+mkdir -p "${FOLDER}"
+mkdir -p ~/composer
 cd "$FOLDER" && echo
 
 init-doco "${FOLDER}"
 
-sed -i "s/!SERVER_NAME!/${BASE_URL}/g" "${FOLDER}/docker-compose.yml"
+if grep -qEi "(Microsoft|WSL)" /proc/version &> /dev/null ; then
+    XDEBUG="xdebug\.remote_host=host\.docker\.internal"
+fi
+
 sed -i "s/!PHP_VERSION!/${PHP_VERSION}/g" "${FOLDER}/docker-compose.yml"
 sed -i "s/!DB_IMAGE!/${DB_IMAGE}/g" "${FOLDER}/docker-compose.yml"
-sed -i "s/!IS_HTTPS!/${IS_HTTPS}/g" "${FOLDER}/docker-compose.yml"
 sed -i "s/!IS_MAGENTO!/${IS_MAGENTO}/g" "${FOLDER}/docker-compose.yml"
-printf "\n127.0.0.1\t%s" "${BASE_URL}" | sudo tee -a /etc/hosts > /dev/null
+sed -i "s/!XDEBUG!/${XDEBUG}/g" "${FOLDER}/docker-compose.yml"
 
-echo ""
+
+echo
 if [ -n "$GIT" ]; then
     spin 'Clone code' &
     pid=$!
-    git clone -b "$BRANCH" "$GIT" "${FOLDER}/src" > /dev/null
+    git clone "$GIT" "${FOLDER}/src" 2>/dev/null
     kill ${pid}
 fi
 
@@ -104,12 +125,12 @@ fi
 
 echo
 spin 'Docker Compose Starting' & pid=$!
-doco up -d --remove-orphans > /dev/null
+doco up -d --remove-orphans 2>/dev/null
 kill ${pid}
 
 echo
 spin 'Composer Install Module' & pid=$!
-composer install > /dev/null
+composer install 2>/dev/null
 kill ${pid}
 
 permission "$FOLDER" "$OWN_GROUP"
@@ -117,7 +138,7 @@ permission "$FOLDER" "$OWN_GROUP"
 if [ -n "$DATABASE" ]; then
     spin 'Database Importing' &
     pid=$!
-    mysql-import DATABASE root local local > /dev/null
+    mysql-import DATABASE root local local 2>/dev/null
     kill ${pid}
 fi
 
@@ -126,14 +147,16 @@ if [ "$IS_MAGENTO" == "true" ]; then
         init-magento-env "${FOLDER}"
     fi
 
-    spin 'Magento setup' & pid=$!
-    mgt ca:f
-    mgt deploy:mode:set developer
-    mgt s:up
-    kill ${pid}
-    spin 'Magento indexing' & pid=$!
-    mgt in:rei
-    kill ${pid}
+    if [ -n "$DATABASE" ]; then
+        spin 'Magento setup' & pid=$!
+        mgt ca:f
+        mgt deploy:mode:set developer
+        mgt s:up
+        kill ${pid}
+        spin 'Magento indexing' & pid=$!
+        mgt in:rei
+        kill ${pid}
+    fi
 fi
 
 echo "Done"
