@@ -1,21 +1,55 @@
+# VCL version 5.0 is not supported so it should be 4.0 even though actually used Varnish version is 6
 vcl 4.0;
 
 import std;
+# The minimal Varnish version is 6.0
+# For SSL offloading, pass the following header in your proxy server or load balancer: 'X-Forwarded-Proto: https'
 
 backend default {
     .host = "nginx";
     .port = "8080";
     .first_byte_timeout = 600s;
+    .probe = {
+        .url = "/health_check.php";
+        .timeout = 2s;
+        .interval = 5s;
+        .window = 10;
+        .threshold = 5;
+    }
 }
 
 acl purge {
     "localhost";
     "nginx";
+    "php";
 }
 
 sub vcl_recv {
-    if (req.http.X-Real-Ip) {
-        set req.http.X-Forwarded-For = req.http.X-Real-Ip;
+    # Remove empty query string parameters
+    # e.g.: www.example.com/index.html?
+    if (req.url ~ "\?$") {
+        set req.url = regsub(req.url, "\?$", "");
+    }
+
+    # Remove port number from host header
+    set req.http.Host = regsub(req.http.Host, ":[0-9]+", "");
+
+    # Sorts query string parameters alphabetically for cache normalization purposes
+    set req.url = std.querysort(req.url);
+
+    # Remove the proxy header to mitigate the httpoxy vulnerability
+    # See https://httpoxy.org/
+    unset req.http.proxy;
+
+    # Add X-Forwarded-Proto header when using https
+    if (!req.http.X-Forwarded-Proto && (std.port(server.ip) == 443)) {
+        set req.http.X-Forwarded-Proto = "https";
+    }
+
+    # Reduce grace to 300s if the backend is healthy
+    # In case of an unhealthy backend, the original grace is used
+    if (std.healthy(req.backend_hint)) {
+        set req.grace = 300s;
     }
 
     if (req.http.X-Forwarded-Proto !~ "https" && req.method != "PURGE") {
@@ -75,9 +109,9 @@ sub vcl_recv {
     }
 
     # Bypass health check requests
-    if (req.url ~ "/pub/health_check.php") {
-        return (pass);
-    }
+    if (req.url ~ "^/(pub/)?(health_check.php)$") {
+            return (pass);
+        }
 
     # Set initial grace period usage status
     set req.http.grace = "none";
@@ -103,10 +137,11 @@ sub vcl_recv {
         }
     }
 
-    # Remove Google gclid parameters to minimize the cache objects
-    set req.url = regsuball(req.url,"\?gclid=[^&]+$",""); # strips when QS = "?gclid=AAA"
-    set req.url = regsuball(req.url,"\?gclid=[^&]+&","?"); # strips when QS = "?gclid=AAA&foo=bar"
-    set req.url = regsuball(req.url,"&gclid=[^&]+",""); # strips when QS = "?foo=bar&gclid=AAA" or QS = "?foo=bar&gclid=AAA&bar=baz"
+    # Remove all marketing get parameters to minimize the cache objects
+    if (req.url ~ "(\?|&)(gclid|cx|ie|cof|siteurl|zanpid|origin|fbclid|mc_[a-z]+|utm_[a-z]+|_bta_[a-z]+)=") {
+        set req.url = regsuball(req.url, "(gclid|cx|ie|cof|siteurl|zanpid|origin|fbclid|mc_[a-z]+|utm_[a-z]+|_bta_[a-z]+)=[-_A-z0-9+()%.]+&?", "");
+        set req.url = regsub(req.url, "[?|&]+$", "");
+    }
 
     # static files are always cacheable. remove SSL flag and cookie
         if (req.url ~ "^/(pub/)?(media|static)/.*\.(ico|css|js|jpg|jpeg|png|gif|tiff|bmp|mp3|ogg|svg|swf|woff|woff2|eot|ttf|otf)$") {
@@ -134,6 +169,8 @@ sub vcl_synth {
 }
 
 sub vcl_hash {
+    hash_data(regsub(std.tolower(req.http.Authorization), "^bearer\s\x22(\w+?):\w+?\x22", "\1"));
+
     if (req.http.cookie ~ "X-Magento-Vary=") {
         hash_data(regsub(req.http.cookie, "^.*?X-Magento-Vary=([^;]+);*.*$", "\1"));
     }
@@ -208,12 +245,6 @@ sub vcl_backend_response {
     # validate if we need to cache it and prevent from setting cookie
     if (beresp.ttl > 0s && (bereq.method == "GET" || bereq.method == "HEAD")) {
         unset beresp.http.set-cookie;
-        if (bereq.url !~ "\.(ico|css|js|jpg|jpeg|png|gif|tiff|bmp|gz|tgz|bz2|tbz|mp3|ogg|svg|swf|woff|woff2|eot|ttf|otf)(\?|$)") {
-            set beresp.http.Pragma = "no-cache";
-            set beresp.http.Expires = "-1";
-            set beresp.http.Cache-Control = "no-store, no-cache, must-revalidate, max-age=0";
-            set beresp.grace = 1m;
-        }
     }
 
    # If page is not cacheable then bypass varnish for 2 minutes as Hit-For-Pass
